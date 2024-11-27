@@ -1,0 +1,60 @@
+import imaplib
+import email
+from email.header import decode_header
+import os
+from cryptography.fernet import Fernet
+
+# Email credentials
+username = "Enter Email"
+password = "Enter Password"
+
+# Connect to the email server
+mail = imaplib.IMAP4_SSL("imap.example.com")
+mail.login(username, password)
+mail.select("inbox")
+
+# Search for all emails
+status, messages = mail.search(None, "ALL")
+email_ids = messages[0].split()
+
+# Fetch the latest email
+latest_email_id = email_ids[-1]
+status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+
+# Parse the email content
+msg = email.message_from_bytes(msg_data[0][1])
+
+# Download the attachment
+for part in msg.walk():
+    if part.get_content_maintype() == "multipart":
+        continue
+    if part.get("Content-Disposition") is None:
+        continue
+
+    filename = part.get_filename()
+    if filename:
+        filepath = os.path.join("/path/to/save", filename)
+        with open(filepath, "wb") as f:
+            f.write(part.get_payload(decode=True))
+
+# Generate and save the encryption key
+key = Fernet.generate_key()
+with open("key.key", "wb") as key_file:
+    key_file.write(key)
+
+# Load the key
+with open("key.key", "rb") as key_file:
+    key = key_file.read()
+
+# Encrypt the file
+cipher = Fernet(key)
+with open(filepath, "rb") as file:
+    file_data = file.read()
+
+encrypted_data = cipher.encrypt(file_data)
+
+# Save the encrypted file
+with open(filepath + ".encrypted", "wb") as file:
+    file.write(encrypted_data)
+
+print("File encrypted and saved as", filepath + ".encrypted")
