@@ -1,0 +1,78 @@
+#include "StdAfx.h"
+#include <tchar.h>
+#include <iostream>
+#include <windows.h>
+
+using std::cout;
+using std::endl;
+
+int _tmain(int argc, _TCHAR* argv[]) {  
+    HINSTANCE hinst = LoadLibrary(_T("testdll3.dll")); 
+    if (!hinst) {
+        cout << "Failed to load DLL" << endl;
+        return 1;
+    }
+
+    typedef void (*Install)();
+    typedef void (*Uninstall)();
+    Install install = (Install) GetProcAddress(hinst, "install");
+    Uninstall uninstall = (Uninstall) GetProcAddress(hinst, "uninstall");
+
+    if (!install || !uninstall) {
+        cout << "Failed to get function addresses" << endl;
+        return 1;
+    }
+
+    install();
+    int foo;
+    std::cin >> foo; 
+
+    cout << "Uninstalling" << endl;
+    uninstall();
+    FreeLibrary(hinst);
+    return 0;
+}
+
+#include <windows.h>
+#include <stdio.h>
+#include <tchar.h>
+
+HHOOK hhk;
+HHOOK hhk2;
+
+LRESULT CALLBACK journalRecordProc(int code, WPARAM wParam, LPARAM lParam) {  
+    if (code >= 0) {
+        FILE * fileLog = fopen("journal.txt", "a+");
+        if (fileLog) {
+            fprintf(fileLog, "loggedJournal\n");
+            fclose(fileLog);
+        }
+    }
+    return CallNextHookEx(hhk, code, wParam, lParam);
+}
+
+LRESULT CALLBACK wireKeyboardProc(int code, WPARAM wParam, LPARAM lParam) {  
+    if (code >= 0) {
+        FILE * fileLog = fopen("keyboard.txt", "a+");
+        if (fileLog) {
+            fprintf(fileLog, "loggedKeyboard\n");
+            fclose(fileLog);
+        }
+    }
+    return CallNextHookEx(hhk2, code, wParam, lParam);
+}
+
+extern "C" __declspec(dllexport) void install() {
+    HINSTANCE thisDllInstance = GetModuleHandle(NULL);
+    hhk = SetWindowsHookEx(WH_JOURNALRECORD, journalRecordProc, thisDllInstance, 0);
+    hhk2 = SetWindowsHookEx(WH_KEYBOARD, wireKeyboardProc, thisDllInstance, 0);
+}
+
+extern "C" __declspec(dllexport) void uninstall() {
+    UnhookWindowsHookEx(hhk); 
+    UnhookWindowsHookEx(hhk2); 
+}
+
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+    return TRUE;
+}
