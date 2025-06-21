@@ -1,0 +1,67 @@
+import imaplib
+import email
+from email.header import decode_header
+import os
+from cryptography.fernet import Fernet
+
+# CONFIGURATION
+username = "your_email@example.com"
+password = "your_password"
+imap_server = "imap.example.com"
+download_dir = "/path/to/save"
+
+try:
+    # Connect and log in
+    mail = imaplib.IMAP4_SSL(imap_server)
+    mail.login(username, password)
+    mail.select("inbox")
+
+    # Search for emails
+    status, messages = mail.search(None, "ALL")
+    email_ids = messages[0].split()
+    if not email_ids:
+        raise Exception("No emails found.")
+
+    # Fetch latest email
+    latest_email_id = email_ids[-1]
+    status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+    msg = email.message_from_bytes(msg_data[0][1])
+
+    # Download attachment
+    for part in msg.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        if part.get("Content-Disposition") is None:
+            continue
+
+        filename = part.get_filename()
+        if filename:
+            # Decode filename if needed
+            decoded_name, encoding = decode_header(filename)[0]
+            if isinstance(decoded_name, bytes):
+                filename = decoded_name.decode(encoding if encoding else "utf-8")
+
+            filepath = os.path.join(download_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(part.get_payload(decode=True))
+            print(f"File saved to: {filepath}")
+
+            # Encrypt the file
+            key = Fernet.generate_key()
+            cipher = Fernet(key)
+
+            with open(filepath, "rb") as file:
+                file_data = file.read()
+
+            encrypted_data = cipher.encrypt(file_data)
+            encrypted_filepath = filepath + ".encrypted"
+            with open(encrypted_filepath, "wb") as enc_file:
+                enc_file.write(encrypted_data)
+
+            # Store key securely (consider a secrets manager in production)
+            with open(os.path.join(download_dir, "key.key"), "wb") as key_file:
+                key_file.write(key)
+
+            print(f"File encrypted and saved as: {encrypted_filepath}")
+except Exception as e:
+    print("An error occurred:", str(e))
